@@ -210,6 +210,7 @@ class BitsAndBytesLinearMethod(LinearMethodBase):
                        input_size_per_partition: int,
                        output_partition_sizes: List[int], input_size: int,
                        output_size: int, params_dtype: torch.dtype,
+                       layer_type: Optional[str] = None,
                        **extra_weight_attrs):
         from bitsandbytes.nn import Int8Params
 
@@ -236,25 +237,29 @@ class BitsAndBytesLinearMethod(LinearMethodBase):
                 })
             return qweight
 
-        def create_qweight_for_4bit():
-            #  This was the older code in vllm library, which is replaced by a simple tensor initialisation for param.
-            # quant_ratio = calculate_quant_ratio(params_dtype)
-            
-            # total_size = input_size_per_partition * sum(output_partition_sizes)
-            # if total_size % quant_ratio != 0:
-            #     raise ValueError(
-            #         "The input size is not aligned with the quantized "
-            #         "weight shape.")
-            
-            # qweight = torch.nn.Parameter(torch.empty(total_size // quant_ratio,
-            #                                          1,
-            #                                          dtype=torch.uint8),
-            #                              requires_grad=False)
+        def create_qweight_for_4bit(layer_type: Optional[str] = None):
+            # This was the older code in vllm library, which is replaced by a simple tensor initialisation for param.
+            qweight = None
+            if layer_type in ['qkv','o_proj']:
+                quant_ratio = calculate_quant_ratio(params_dtype)
+                
+                total_size = input_size_per_partition * sum(output_partition_sizes)
+                if total_size % quant_ratio != 0:
+                    raise ValueError(
+                        "The input size is not aligned with the quantized "
+                        "weight shape.")
+                
+                qweight = torch.nn.Parameter(torch.empty(total_size // quant_ratio,
+                                                        1,
+                                                        dtype=torch.uint8),
+                                            requires_grad=False)
 
-            qweight = torch.nn.Parameter(torch.empty(sum(output_partition_sizes),
-                                            input_size_per_partition,
-                                            dtype=torch.uint8),
-                    requires_grad=False)
+            else:
+                qweight = torch.nn.Parameter(torch.empty(sum(output_partition_sizes),
+                                                input_size_per_partition,
+                                                dtype=torch.uint8),
+                        requires_grad=False)
+            
             set_weight_attrs(
                 qweight, {
                     "input_dim": 0,
@@ -268,7 +273,7 @@ class BitsAndBytesLinearMethod(LinearMethodBase):
         if self.quant_config.load_in_8bit:
             qweight = create_qweight_for_8bit()
         else:
-            qweight = create_qweight_for_4bit()
+            qweight = create_qweight_for_4bit(layer_type)
         # Enable parameters to have the same name as in the BNB
         # checkpoint format.
         layer.register_parameter("weight", qweight)

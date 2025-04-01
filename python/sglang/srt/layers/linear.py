@@ -334,6 +334,7 @@ class ColumnParallelLinear(LinearBase):
         tp_rank: Optional[int] = None,
         tp_size: Optional[int] = None,
         use_presharded_weights: bool = False,
+        layer_type: Optional[str] = None,
     ):
         super().__init__(
             input_size, output_size, skip_bias_add, params_dtype, quant_config, prefix
@@ -360,12 +361,15 @@ class ColumnParallelLinear(LinearBase):
         if output_sizes is None:
             output_sizes = [output_size]
 
+        print(f"In linear mod init for columnar (later one ka init hi hai). Input size: {self.input_size}, Output size: {self.output_size}, output size per partition: {self.output_partition_sizes}, tp size: {self.tp_size}", file=sys.stderr, flush=True)
+        print(f"Quant method: {self.quant_method}. Quant method create weights function: {self.quant_method.create_weights}", file=sys.stderr, flush=True)
         self.quant_method.create_weights(
             layer=self,
             input_size_per_partition=self.input_size,
             output_partition_sizes=self.output_partition_sizes,
             input_size=self.input_size,
             output_size=self.output_size,
+            layer_type=layer_type,
             params_dtype=self.params_dtype,
             weight_loader=(
                 self.weight_loader_v2
@@ -373,6 +377,7 @@ class ColumnParallelLinear(LinearBase):
                 else self.weight_loader
             ),
         )
+        print(f"Layer tensor data: {self.weight.data}, data shape: {self.weight.data.shape}", file=sys.stderr, flush=True)
         if bias:
             self.bias = Parameter(
                 torch.empty(self.output_size_per_partition, dtype=params_dtype)
@@ -819,6 +824,7 @@ class QKVParallelLinear(ColumnParallelLinear):
             tp_rank=tp_rank,
             tp_size=tp_size,
             use_presharded_weights=self.use_presharded_weights,
+            layer_type='qkv',
         )
 
     def _get_shard_offset_mapping(self, loaded_shard_id: str):
@@ -1152,6 +1158,7 @@ class RowParallelLinear(LinearBase):
         params_dtype: Optional[torch.dtype] = None,
         reduce_results: bool = True,
         quant_config: Optional[QuantizationConfig] = None,
+        layer_type: Optional[str] = None,
         prefix: str = "",
         tp_rank: Optional[int] = None,
         tp_size: Optional[int] = None,
@@ -1183,6 +1190,7 @@ class RowParallelLinear(LinearBase):
             input_size=self.input_size,
             output_size=self.output_size,
             params_dtype=self.params_dtype,
+            layer_type=layer_type,
             weight_loader=(
                 self.weight_loader_v2
                 if self.quant_method.__class__.__name__ in WEIGHT_LOADER_V2_SUPPORTED

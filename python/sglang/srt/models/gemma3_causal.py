@@ -165,6 +165,7 @@ class Gemma3Attention(nn.Module):
             hidden_size,
             bias=config.attention_bias,
             quant_config=quant_config,
+            layer_type="o_proj",
             prefix=add_prefix("o_proj", prefix),
         )
 
@@ -652,10 +653,27 @@ class Gemma3ForCausalLM(PreTrainedModel):
             ("gate_up_proj", "up_proj", 1),
         ]
         params_dict = dict(self.named_parameters())
-        print(f"Params final names: {params_dict.keys()}", file=sys.stderr, flush=True)
+        print(f"\n\nParams final names: {params_dict.keys()}", file=sys.stderr, flush=True)
         loaded_params: Set[str] = set()
+        name_list = [name_tup[0] for name_tup in weights]
+        name_set = set(name_list)
+        suffixes = [".absmax", ".nested_absmax", ".nested_quant_map", ".quant_map", ".quant_state.bitsandbytes__nf4", \
+                    ".absmax.", ".nested_absmax.", ".nested_quant_map.", ".quant_map.", ".quant_state.bitsandbytes__nf4.", "."]
+        name_list_un_absmax = []
+        suffix_in = ""
+        for el in name_list:
+            for suffix in suffixes:
+                if suffix in el:
+                    name_list_un_absmax.append(el.removesuffix(suffix))
+                    suffix_in = suffix
+                    break
+        if len(name_list) > 1:
+            print(f"Name list is longer than size 1.", file=sys.stderr, flush=True)
+        print(f"suffix in name list: {suffix_in}", file=sys.stderr, flush=True)
+        name_list_un_absmax = set(name_list_un_absmax)
+        print(f"Names list in weights: {name_list}\nIs name list size same as set: {len(name_set) == len(name_list)}\nIs it same as set and other set without absmax: {len(name_set) == len(name_list_un_absmax)}", file=sys.stderr, flush=True)
         for name, loaded_weight in weights:
-            print(f"Current param dict key name: {name}", file=sys.stderr, flush=True)
+            print(f"Current param dict key name: {name}.\nParams dict keys: {params_dict.keys()}\nName in params_dict: {name in params_dict}. Without suffix: {name.removesuffix(suffix_in)}", file=sys.stderr, flush=True)
             for param_name, shard_name, shard_id in stacked_params_mapping:
                 # if param_name in name:
                 # print(f"{param_name} is already in {name}")
@@ -665,21 +683,33 @@ class Gemma3ForCausalLM(PreTrainedModel):
                 # Skip loading extra bias for GPTQ models.
                 if name.endswith(".bias") and name not in params_dict:
                     continue
+                print(f"Pre-processed name: {name}. Preprocessed name in params_dict: {name in params_dict}", file=sys.stderr, flush=True)
+                if name.removesuffix(suffix_in) != name and name not in params_dict:
+                    print(f"Name not in params_dict.", file=sys.stderr, flush=True)
+                    if name.removesuffix(suffix_in) in params_dict:
+                        print(f"Name with suffix removed already in params_dict.", file=sys.stderr, flush=True)
+                        break
+                    print(f"Name with suffix removed NOT in params_dict. Removing suffix.", file=sys.stderr, flush=True)
+                    name = name.removesuffix(suffix_in)
                 param = params_dict[name]
                 weight_loader = param.weight_loader
                 if isinstance(param, dict):
                   print("In for. Got param dict name as dict instance True. Executing the last weight loader after this.", file=sys.stderr, flush=True)
                   for param_ind in param:
                     if hasattr(param[param_ind], "shape") and param[param_ind].shape[0] > 100:
-                        print(f"{param_ind}: {param[param_ind][:100]}", file=sys.stderr, flush=True)
+                        # print(f"{param_ind}: {param[param_ind][:100]}", file=sys.stderr, flush=True)
+                        pass
                     else: 
-                        print(f"{param_ind}: {param[param_ind]}", file=sys.stderr, flush=True)
+                        # print(f"{param_ind}: {param[param_ind]}", file=sys.stderr, flush=True)
+                        pass
                 else:
                   print(f"In for. Got param dict name as dict instance False. Executing the last weight loader after this.", file=sys.stderr, flush=True)
                   if hasattr(param, "shape") and param.shape[0] > 100:
-                        print(f"{param[:100]}", file=sys.stderr, flush=True)
+                        # print(f"{param[:100]}", file=sys.stderr, flush=True)
+                        pass
                   else: 
-                      print(f"{param}", file=sys.stderr, flush=True)
+                    #   print(f"{param}", file=sys.stderr, flush=True)
+                    pass
                 weight_loader(param, loaded_weight, shard_id)
                 break
             else:
@@ -694,6 +724,14 @@ class Gemma3ForCausalLM(PreTrainedModel):
                 name = maybe_remap_kv_scale_name(name, params_dict)
                 if name is None:
                     continue
+                print(f"Pre-processed name (else): {name}. Preprocessed name in params_dict: {name in params_dict}", file=sys.stderr, flush=True)
+                if name.removesuffix(suffix_in) != name and name not in params_dict:
+                    print(f"Name not in params_dict.", file=sys.stderr, flush=True)
+                    if name.removesuffix(suffix_in) in params_dict:
+                        print(f"Name with suffix removed already in params_dict.", file=sys.stderr, flush=True)
+                        continue
+                    print(f"Name with suffix removed NOT in params_dict. Removing suffix.", file=sys.stderr, flush=True)
+                    name = name.removesuffix(suffix_in)
 
                 param = params_dict[name]
                 weight_loader = getattr(param, "weight_loader", default_weight_loader)
@@ -701,15 +739,19 @@ class Gemma3ForCausalLM(PreTrainedModel):
                   print("In else. Got param dict name as dict instance True. Executing the last weight loader after this.", file=sys.stderr, flush=True)
                   for param_ind in param:
                     if hasattr(param[param_ind], "shape") and param[param_ind].shape[0] > 100:
-                        print(f"{param_ind}: {param[param_ind][:100]}", file=sys.stderr, flush=True)
+                        # print(f"{param_ind}: {param[param_ind][:100]}", file=sys.stderr, flush=True)
+                        pass
                     else: 
-                        print(f"{param_ind}: {param[param_ind]}", file=sys.stderr, flush=True)
+                        # print(f"{param_ind}: {param[param_ind]}", file=sys.stderr, flush=True)
+                        pass
                 else:
                   print(f"In else. Got param dict name as dict instance False. Executing the last weight loader after this.", file=sys.stderr, flush=True)
                   if hasattr(param, "shape") and param.shape[0] > 100:
-                        print(f"{param[:100]}", file=sys.stderr, flush=True)
+                        # print(f"{param[:100]}", file=sys.stderr, flush=True)
+                        pass
                   else: 
-                      print(f"{param}", file=sys.stderr, flush=True)
+                    #   print(f"{param}", file=sys.stderr, flush=True)
+                    pass
                 weight_loader(param, loaded_weight)
             loaded_params.add(name)
         # unloaded_params = params_dict.keys() - loaded_params
