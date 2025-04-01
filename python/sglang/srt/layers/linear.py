@@ -497,6 +497,7 @@ class MergedColumnParallelLinear(ColumnParallelLinear):
         skip_bias_add: bool = False,
         params_dtype: Optional[torch.dtype] = None,
         quant_config: Optional[QuantizationConfig] = None,
+        layer_type: Optional[str] = None,
         prefix: str = "",
         tp_rank: Optional[int] = None,
         tp_size: Optional[int] = None,
@@ -518,6 +519,7 @@ class MergedColumnParallelLinear(ColumnParallelLinear):
             skip_bias_add=skip_bias_add,
             params_dtype=params_dtype,
             quant_config=quant_config,
+            layer_type=layer_type,
             prefix=prefix,
             tp_rank=tp_rank,
             tp_size=tp_size,
@@ -561,6 +563,8 @@ class MergedColumnParallelLinear(ColumnParallelLinear):
         is_metadata = getattr(param, "is_metadata", False)
         # Special case for per-tensor scale to load scalar into fused array.
         needs_scalar_to_array = getattr(param, "needs_scalar_to_array", False)
+        print(f"Param in final fn. : {param}.\nParam attrs: {dir(param)}", file=sys.stderr, flush=True)
+        print(f"Param data shape: {param_data.shape}, weight shape: {loaded_weight.shape}\nParam data: {param_data}\nLoaded Weights: {loaded_weight}", file=sys.stderr, flush=True)
 
         if loaded_shard_id is None:
             # Loaded weight is already fused on disk (qkv/mlp).
@@ -774,6 +778,7 @@ class QKVParallelLinear(ColumnParallelLinear):
         bias: bool = True,
         skip_bias_add: bool = False,
         params_dtype: Optional[torch.dtype] = None,
+        layer_type: Optional[str] = None,
         quant_config: Optional[QuantizationConfig] = None,
         prefix: str = "",
         tp_rank: Optional[int] = None,
@@ -824,7 +829,7 @@ class QKVParallelLinear(ColumnParallelLinear):
             tp_rank=tp_rank,
             tp_size=tp_size,
             use_presharded_weights=self.use_presharded_weights,
-            layer_type='qkv',
+            layer_type='qkv' if layer_type is None else layer_type,
         )
 
     def _get_shard_offset_mapping(self, loaded_shard_id: str):

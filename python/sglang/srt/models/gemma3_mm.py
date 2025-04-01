@@ -19,6 +19,7 @@ import logging
 from functools import lru_cache
 from typing import Dict, Iterable, List, Optional, Set, Tuple, TypedDict
 
+import sys
 import torch
 from torch import nn
 from transformers import (
@@ -446,12 +447,13 @@ class Gemma3ForConditionalGeneration(PreTrainedModel):
                 # Skip loading extra bias for GPTQ models
                 if name.endswith(".bias") and name not in params_dict:
                     continue
-
+                
                 # Remapping the name of FP8 kv-scale
                 name = maybe_remap_kv_scale_name(name, params_dict)
                 if name is None:
                     continue
                 param = params_dict[name]
+                print(f"\n\nNot lang model in weight loading in gemma3_mm.py.\nName: {name}\nParam: {param}\nWeights: {loaded_weight}", file=sys.stderr, flush=True)
                 weight_loader = getattr(param, "weight_loader", default_weight_loader)
                 weight_loader(param, loaded_weight)
                 loaded_params.add(name)

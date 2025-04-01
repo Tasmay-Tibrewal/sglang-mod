@@ -75,15 +75,22 @@ class Gemma3MLP(nn.Module):
         hidden_size: int,
         intermediate_size: int,
         hidden_activation: str,
+        layer_id: Optional[int] = None,
         quant_config: Optional[QuantizationConfig] = None,
         prefix: str = "",
     ) -> None:
         super().__init__()
+        layer_type = None
+        if layer_id >= 2 and layer_id not in [3,4,5]:
+            print(f"Got layer id as 10 for mlp", file=sys.stderr, flush=True)
+            layer_type="def_mlp"
+        print(f"{'-'*20}\nInter-mediate size for gate-up-proj: {intermediate_size}, Hidden size: {hidden_size}.", file=sys.stderr, flush=True)
         self.gate_up_proj = MergedColumnParallelLinear(
             hidden_size,
             [intermediate_size] * 2,
             bias=False,
             quant_config=quant_config,
+            layer_type=layer_type,
             prefix=add_prefix("gate_up_proj", prefix),
         )
         print(f"{'-'*20}\nInter-mediate size for down-proj: {intermediate_size}, Hidden size: {hidden_size}.", file=sys.stderr, flush=True)
@@ -92,6 +99,7 @@ class Gemma3MLP(nn.Module):
             hidden_size,
             bias=False,
             quant_config=quant_config,
+            layer_type=layer_type,
             prefix=add_prefix("down_proj", prefix),
         )
         if hidden_activation != "gelu_pytorch_tanh":
@@ -150,7 +158,10 @@ class Gemma3Attention(nn.Module):
 
         self.kv_size = self.num_kv_heads * self.head_dim
         self.scaling = config.query_pre_attn_scalar**-0.5
-
+        layer_type = None
+        if layer_id == 2:
+            print(f"Got layer id as 10 for mlp", file=sys.stderr, flush=True)
+            layer_type="non_def_att"
         self.qkv_proj = QKVParallelLinear(
             hidden_size,
             self.head_dim,
@@ -158,6 +169,7 @@ class Gemma3Attention(nn.Module):
             self.total_num_kv_heads,
             bias=config.attention_bias,
             quant_config=quant_config,
+            layer_type="qkv" if layer_type is None else layer_type,
             prefix=add_prefix("qkv_proj", prefix),
         )
         self.o_proj = RowParallelLinear(
@@ -165,7 +177,7 @@ class Gemma3Attention(nn.Module):
             hidden_size,
             bias=config.attention_bias,
             quant_config=quant_config,
-            layer_type="o_proj",
+            layer_type="o_proj" if layer_type is None else layer_type,
             prefix=add_prefix("o_proj", prefix),
         )
 
@@ -305,6 +317,7 @@ class Gemma3DecoderLayer(nn.Module):
             hidden_size=self.hidden_size,
             intermediate_size=config.intermediate_size,
             hidden_activation=config.hidden_activation,
+            layer_id=layer_id,
             quant_config=quant_config,
             prefix=add_prefix("mlp", prefix),
         )
@@ -653,7 +666,7 @@ class Gemma3ForCausalLM(PreTrainedModel):
             ("gate_up_proj", "up_proj", 1),
         ]
         params_dict = dict(self.named_parameters())
-        print(f"\n\nParams final names: {params_dict.keys()}", file=sys.stderr, flush=True)
+        # print(f"\n\nParams final names: {params_dict.keys()}", file=sys.stderr, flush=True)
         loaded_params: Set[str] = set()
         name_list = [name_tup[0] for name_tup in weights]
         name_set = set(name_list)
@@ -667,13 +680,15 @@ class Gemma3ForCausalLM(PreTrainedModel):
                     name_list_un_absmax.append(el.removesuffix(suffix))
                     suffix_in = suffix
                     break
+        print(f"\n\n", file=sys.stderr, flush=True)
         if len(name_list) > 1:
             print(f"Name list is longer than size 1.", file=sys.stderr, flush=True)
         print(f"suffix in name list: {suffix_in}", file=sys.stderr, flush=True)
         name_list_un_absmax = set(name_list_un_absmax)
         print(f"Names list in weights: {name_list}\nIs name list size same as set: {len(name_set) == len(name_list)}\nIs it same as set and other set without absmax: {len(name_set) == len(name_list_un_absmax)}", file=sys.stderr, flush=True)
         for name, loaded_weight in weights:
-            print(f"Current param dict key name: {name}.\nParams dict keys: {params_dict.keys()}\nName in params_dict: {name in params_dict}. Without suffix: {name.removesuffix(suffix_in)}", file=sys.stderr, flush=True)
+            # print(f"Current param dict key name: {name}.\nParams dict keys: {params_dict.keys()}\nName in params_dict: {name in params_dict}. Without suffix: {name.removesuffix(suffix_in)}", file=sys.stderr, flush=True)
+            print(f"Current param dict key name: {name}.\nName in params_dict: {name in params_dict}. Without suffix: {name.removesuffix(suffix_in)}", file=sys.stderr, flush=True)
             for param_name, shard_name, shard_id in stacked_params_mapping:
                 # if param_name in name:
                 # print(f"{param_name} is already in {name}")

@@ -2,6 +2,7 @@
 import builtins
 import inspect
 import re
+import sys
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
@@ -240,7 +241,8 @@ class BitsAndBytesLinearMethod(LinearMethodBase):
         def create_qweight_for_4bit(layer_type: Optional[str] = None):
             # This was the older code in vllm library, which is replaced by a simple tensor initialisation for param.
             qweight = None
-            if layer_type in ['qkv','o_proj']:
+            print(f"Layer type is: {layer_type}", file=sys.stderr, flush=True)
+            if layer_type in ['qkv','o_proj','def_mlp']:
                 quant_ratio = calculate_quant_ratio(params_dtype)
                 
                 total_size = input_size_per_partition * sum(output_partition_sizes)
