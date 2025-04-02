@@ -172,6 +172,7 @@ class Gemma3ForConditionalGeneration(PreTrainedModel):
         #     quant_config,
         #     prefix=add_prefix("vision_tower", prefix),
         # )
+        print(f"vision tower config, class: {AutoModel.from_config}\nVision config: {config.vision_config}", file=sys.stderr, flush=True)
         self.vision_tower = AutoModel.from_config(config=config.vision_config)
         self.multi_modal_projector = Gemma3MultiModalProjector(config)
         self.vocab_size = config.text_config.vocab_size
@@ -452,8 +453,28 @@ class Gemma3ForConditionalGeneration(PreTrainedModel):
                 name = maybe_remap_kv_scale_name(name, params_dict)
                 if name is None:
                     continue
-                param = params_dict[name]
+
+                param = None
                 print(f"\n\nNot lang model in weight loading in gemma3_mm.py.\nName: {name}\nParam: {param}\nWeights: {loaded_weight}", file=sys.stderr, flush=True)
+                suffixes = [".absmax", ".nested_absmax", ".nested_quant_map", ".quant_map", ".quant_state.bitsandbytes__nf4", \
+                    ".absmax.", ".nested_absmax.", ".nested_quant_map.", ".quant_map.", ".quant_state.bitsandbytes__nf4.", "."]
+                if name in params_dict:
+                    param = params_dict[name]
+                else:
+                    print(f"Name not in params_dict.", file=sys.stderr, flush=True)
+                    cont = 0
+                    for suffix in suffixes:
+                        if name.removesuffix(suffix) in params_dict:
+                            print(f"Name with suffix removed already in params_dict.", file=sys.stderr, flush=True)
+                            cont = 1
+                            break
+                            # name = name.removesuffix(suffix)
+                            # param = params_dict[name]
+                            # break
+                    else:
+                        raise KeyError(f"Key '{name}' not found")
+                    if cont == 1:
+                        continue
                 weight_loader = getattr(param, "weight_loader", default_weight_loader)
                 weight_loader(param, loaded_weight)
                 loaded_params.add(name)

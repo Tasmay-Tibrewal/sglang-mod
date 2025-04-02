@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import os
+import sys
 import tempfile
 from collections import defaultdict
 from typing import (
@@ -530,9 +531,11 @@ def default_weight_loader(param: torch.Tensor, loaded_weight: torch.Tensor) -> N
             # "broadcast" instead of copy
             param.data.fill_(loaded_weight.item())
         else:
+            print(f"Param size: {param.size()}, Loaded weight size: {loaded_weight.size()}", file=sys.stderr, flush=True)
+
             assert param.size() == loaded_weight.size(), (
                 f"Attempted to load weight ({loaded_weight.size()}) "
-                f"into parameter ({param.size()})"
+                f"into parameter ({param.size()})\nparam: {param}"
             )
 
             param.data.copy_(loaded_weight)
