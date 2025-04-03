@@ -239,9 +239,13 @@ class BitsAndBytesLinearMethod(LinearMethodBase):
             return qweight
 
         def create_qweight_for_4bit(layer_type: Optional[str] = None):
+            # Import the correct classes from bitsandbytes
+            from bitsandbytes.functional import QuantState, get_4bit_type
+
             # This was the older code in vllm library, which is replaced by a simple tensor initialisation for param.
             qweight = None
             print(f"Layer type is: {layer_type}", file=sys.stderr, flush=True)
+            
             if layer_type in ['qkv','o_proj','def_mlp']:
                 quant_ratio = calculate_quant_ratio(params_dtype)
                 
@@ -262,13 +266,39 @@ class BitsAndBytesLinearMethod(LinearMethodBase):
                                                 dtype=torch.uint8),
                         requires_grad=False)
             
+            print(f"Extra weight attrs: {list(extra_weight_attrs.keys())}.", file=sys.stderr, flush=True)
+
+            # Initialize proper quantization state objects
+            output_size = sum(output_partition_sizes)
+            
+            # Get the correct quantization map for the specified type
+            quant_type = self.quant_config.bnb_4bit_quant_type
+            code_map = get_4bit_type(quant_type, device=qweight.device)
+            
+            # Create proper quant_state objects
+            bnb_quant_state = {
+                0: QuantState(
+                    absmax=torch.zeros(output_size, dtype=torch.float16),
+                    shape=torch.Size([output_size, input_size_per_partition]),
+                    code=code_map,
+                    quant_type=quant_type,
+                    blocksize=64  # Default blocksize for 4-bit quantization
+                )
+            }
+                
+            # Define shard offsets
+            bnb_shard_offsets = [0, output_size]
+            
+            # Set all attributes
             set_weight_attrs(
                 qweight, {
                     "input_dim": 0,
                     "output_dim": 0,
                     # "pack_factor": quant_ratio,
                     "pack_factor": 1, # (pack factor is temporarily set to 1 to fix the bug, change it later accordingly)
-                    "use_bitsandbytes_4bit": True
+                    "use_bitsandbytes_4bit": True,
+                    "bnb_quant_state": bnb_quant_state,  # Add quant_state attribute
+                    "bnb_shard_offsets": bnb_shard_offsets,  # Add shard_offsets attribute
                 })
             return qweight
 
